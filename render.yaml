@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: vuon-binh-yen
+    runtime: node
+    plan: free
+    buildCommand: "echo 'Không cần cài thư viện'"
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false
