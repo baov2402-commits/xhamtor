@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vườn Bình Yên – Game KHTN 7 Vật lí</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&subset=vietnamese&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="w" id="app"></div>
+<script src="/fx.js"></script>
+<script src="/questions.js"></script>
+<script>
+const Q=window.Q,LESSON=window.LESSON;
+const AV=["🐢","🦦","🐨","🐼","🦥","🐳","🦔","🐝","🐸","🦊","🐰","🐧"];
+const MOOD=["😣","😟","😐","🙂","😄"],MOODT=["Rất căng thẳng","Hơi lo","Bình thường","Khá thoải mái","Rất thư thái"];
+const NICE=["Bạn đang làm rất tốt rồi đấy 🌿","Hít một hơi thật sâu… thở ra thật chậm.","Sai cũng là một cách học — không sao cả!","Mỗi câu trả lời là một hạt giống mới 🌱","Uống một ngụm nước nhé, bạn xứng đáng được nghỉ.","Bạn không cần hoàn hảo, chỉ cần tiến bộ.","Thả lỏng vai, thả lỏng tay, mình chơi tiếp nào!","Bạn mạnh mẽ hơn bạn nghĩ đấy 💛"];
+const WRONG=["Không sao đâu, mình cùng xem lại nhé 🌧️→🌈","Gần đúng rồi! Lần sau chắc chắn được.","Hít thở nhẹ… đây là đáp án đúng nè:","Ai cũng có lúc nhầm — quan trọng là mình hiểu ra."];
+const BOX=[{e:"☁️",n:"Hộp Mây"},{e:"🍃",n:"Hộp Lá"},{e:"⭐",n:"Hộp Sao"}];
+const REW=[{w:30,v:10,p:"🌱"},{w:28,v:20,p:"🌿"},{w:22,v:30,p:"🌷"},{w:12,v:40,p:"🌼"},{w:6,v:60,p:"🌻"},{w:2,v:100,p:"🌸"}];
+
+const $=s=>document.querySelector(s),app=$("#app");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const shuf=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+let G={nick:"",av:AV[0],m0:null,m1:null};
+let P=null;      // phiên chơi hiện tại
+let NET=null;    // {code,pid,secret,es,round,state}
+try{const s=JSON.parse(localStorage.getItem("vby")||"{}");if(s.nick)G.nick=s.nick;if(s.av)G.av=s.av}catch(e){}
+const save=()=>{try{localStorage.setItem("vby",JSON.stringify({nick:G.nick,av:G.av}))}catch(e){}};
+const post=(u,b)=>fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Lỗi kết nối");return j});
+
+// ---------- Âm thanh dịu nhẹ ----------
+let AC=null,amb=null,sndOn=true;
+function ac(){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();AC.resume()}catch(e){}return AC}
+function tone(f,d=.5,g=.12){const c=ac();if(!c||!sndOn)return;const o=c.createOscillator(),v=c.createGain();o.frequency.value=f;v.gain.setValueAtTime(0,c.currentTime);
+v.gain.linearRampToValueAtTime(g,c.currentTime+.02);v.gain.exponentialRampToValueAtTime(.0001,c.currentTime+d);o.connect(v);v.connect(c.destination);o.start();o.stop(c.currentTime+d+.05)}
+const chime=()=>{tone(784,.6);setTimeout(()=>tone(1047,.8),110);setTimeout(()=>tone(1319,1),220)};
+const soft=()=>{tone(392,.6,.08);setTimeout(()=>tone(330,.8,.07),150)};
+function ambient(on){const c=ac();if(!c)return;if(amb){amb.g.gain.linearRampToValueAtTime(0,c.currentTime+1);const a=amb;setTimeout(()=>a.o.forEach(o=>o.stop()),1200);amb=null}
+if(!on)return;const g=c.createGain();g.gain.value=0;g.connect(c.destination);g.gain.linearRampToValueAtTime(.05,c.currentTime+2);
+const o=[196,246.94,293.66,392].map((f,i)=>{const x=c.createOscillator(),v=c.createGain(),l=c.createOscillator(),lg=c.createGain();x.frequency.value=f;v.gain.value=.25;
+l.frequency.value=.05+i*.03;lg.gain.value=.2;l.connect(lg);lg.connect(v.gain);x.connect(v);v.connect(g);x.start();l.start();return x});amb={g,o}}
+function toggleSnd(){sndOn=!sndOn;ambient(sndOn&&!!P&&!P.ended);document.querySelectorAll(".snd").forEach(b=>b.textContent=sndOn?"🔊":"🔈")}
+function leaves(n=6){for(let i=0;i<n;i++){const l=document.createElement("div");l.className="leaf";l.textContent=["🍃","🌸","✨","🍀"][i%4];l.style.left=Math.random()*95+"vw";
+l.style.animationDuration=5+Math.random()*5+"s";l.style.animationDelay=Math.random()*2+"s";document.body.append(l);setTimeout(()=>l.remove(),12000)}}
+function floatTxt(t){const d=document.createElement("div");d.className="float";d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),1300)}
+
+// ---------- Trang chính ----------
+function home(){P=null;ambient(false);leaveRoom();
+const code=new URLSearchParams(location.search).get("code")||"";
+app.innerHTML=`<div class="card c">
+<div class="cmt">khtn7.vat-li // bai_08 → bai_20</div>
+<h1>VƯỜN_BÌNH_YÊN</h1>
+<div class="term" id="term"></div>
+<p class="m">Trả lời câu hỏi Vật lí KHTN 7 (bài 8–20), mở hộp quà, trồng khu vườn của riêng bạn và nghỉ hít thở giữa chừng. Trả lời sai không bị trừ điểm — cứ thoải mái mà chơi!</p>
+<button class="btn p" id="join">🚪 Vào phòng của lớp</button>
+<button class="btn" id="solo">🌱 Chơi một mình</button>
+<p class="m small" style="margin-top:14px">${Q.length} câu hỏi · 13 bài · Chương Tốc độ, Âm thanh, Ánh sáng, Từ</p>
+</div>`;
+typeLines($("#term"),["> khởi động hệ thống thư giãn... [OK]","> nạp "+Q.length+" câu hỏi Vật lí... [OK]","> mức căng thẳng: đang giảm dần 🌿"]);
+$("#solo").onclick=()=>{ac();setup("solo")};$("#join").onclick=()=>{ac();setup("join",code)};
+if(code)setup("join",code)}
+
+function setup(mode,code=""){
+app.innerHTML=`<div class="card">
+<h2>${mode=="join"?"Vào phòng chơi":"Chuẩn bị nào"}</h2>
+${mode=="join"?`<div class="lbl">Mã phòng (4 số)</div><input type="text" id="code" inputmode="numeric" maxlength="4" placeholder="VD: 2468" value="${esc(code.replace(/\D/g,"").slice(0,4))}">`:""}
+<div class="lbl">Tên của bạn</div><input type="text" id="nick" maxlength="16" placeholder="Biệt danh" value="${esc(G.nick)}">
+<div class="lbl">Chọn bạn đồng hành</div><div class="av" id="av">${AV.map(a=>`<button class="${a==G.av?"on":""}">${a}</button>`).join("")}</div>
+<div class="lbl">Lúc này bạn cảm thấy thế nào?</div><div class="mood" id="md">${MOOD.map((e,i)=>`<button title="${MOODT[i]}">${e}</button>`).join("")}</div>
+<p class="m small c" id="mdt">Chọn một biểu cảm thật lòng nhé — không ai chấm điểm cái này đâu.</p>
+${mode=="solo"?`<div class="lbl">Số câu hỏi</div><div class="row" id="len"><button class="btn s" data-n="10">10 câu</button><button class="btn s" data-n="20">20 câu</button><button class="btn s" data-n="${Q.length}">Tất cả</button></div>`:`<p class="err" id="er"></p><button class="btn p" id="go">Vào phòng →</button>`}
+<button class="btn s" id="back">← Quay lại</button></div>`;
+$("#back").onclick=()=>{history.replaceState(null,"",location.pathname);home()};
+$("#av").querySelectorAll("button").forEach((b,i)=>b.onclick=()=>{G.av=AV[i];$("#av").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b))});
+$("#md").querySelectorAll("button").forEach((b,i)=>b.onclick=()=>{G.m0=i;$("#md").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b));$("#mdt").textContent=MOODT[i]});
+const ok=()=>{G.nick=($("#nick").value||"").trim().slice(0,16);if(!G.nick){$("#nick").focus();$("#nick").placeholder="Nhập tên trước nhé 🙂";return false}if(G.m0==null)G.m0=2;save();return true};
+if(mode=="solo")$("#len").querySelectorAll("button").forEach(b=>b.onclick=()=>{if(ok())start({n:+b.dataset.n})});
+else $("#go").onclick=async()=>{const c=($("#code").value||"").replace(/\D/g,"");if(c.length!=4){$("#er").textContent="Mã phòng gồm 4 chữ số.";$("#code").focus();return}if(!ok())return;
+$("#go").disabled=true;$("#go").textContent="Đang vào…";$("#er").textContent="";
+try{await joinRoom(c)}catch(e){$("#er").textContent=e.message;$("#go").disabled=false;$("#go").textContent="Thử lại"}}}
+
+function newSession(o){return{qs:shuf(Q),i:0,score:0,ok:0,ans:0,streak:0,best:0,garden:[],breaths:0,miss:[],...o}}
+function start(o){P=newSession(o);G.m1=null;ambient(sndOn);leaves(8);question()}
+
+function topBar(){return `<div class="top"><span class="me">${G.av}</span><span class="nm">${esc(G.nick)}</span>
+${P.live?`<span class="pill tm" id="tm">⏱ --:--</span>`:`<span class="pill tm">${Math.min(P.i+1,P.n)}/${P.n}</span>`}
+<span class="pill" id="sc">☀️ ${P.score}</span><button class="ic snd" onclick="toggleSnd()">${sndOn?"🔊":"🔈"}</button><button class="ic" onclick="breathe(true)" title="Nghỉ hít thở">🫧</button></div>
+<div class="garden">${P.garden.length?P.garden.map(p=>`<span>${p}</span>`).join(""):`<span class="e">Khu vườn của bạn sẽ mọc lên ở đây…</span>`}</div>`}
+
+function question(){if(!P||P.ended)return;
+if(!P.live&&P.i>=P.n)return finish();
+if(P.i>=P.qs.length)P.qs=P.qs.concat(P.pool?shuf(P.pool):shuf(Q));
+const q=P.qs[P.i],order=shuf([0,1,2,3]);
+app.innerHTML=topBar()+`<div class="card"><span class="tag">Bài ${q[0]} · ${LESSON[q[0]]}</span><div class="q">${esc(q[1])}</div>
+<div class="ans">${order.map((k,j)=>`<button class="b${j}" data-k="${k}">${esc(q[2][k])}</button>`).join("")}</div><div id="fb"></div></div>`;
+tick();app.querySelectorAll(".ans button").forEach(b=>b.onclick=()=>answer(+b.dataset.k,q))}
+
+function answer(k,q){if(P.locked||P.ended)return;P.locked=1;P.ans++;const right=k==q[3];
+app.querySelectorAll(".ans button").forEach(b=>{b.onclick=null;const kk=+b.dataset.k;b.classList.toggle("dim",kk!=q[3]);b.classList.toggle("ok",kk==q[3])});
+if(right){P.ok++;P.streak++;P.best=Math.max(P.best,P.streak);chime();
+let bonus="";if(P.streak%3==0){P.score+=10;bonus=`<br>🔥 Chuỗi ${P.streak} câu đúng liên tiếp: <b>+10 ☀️</b>`}
+$("#fb").innerHTML=`<div class="msg ok"><b>Chính xác! 🎉</b> ${esc(q[4])}${bonus}</div><div class="lbl c">Chọn một hộp quà:</div>
+<div class="boxes">${BOX.map((b,i)=>`<button data-i="${i}"><span class="e">${b.e}</span>${b.n}</button>`).join("")}</div>`;
+$("#fb").querySelectorAll(".boxes button").forEach(b=>b.onclick=()=>openBox())}
+else{P.streak=0;soft();P.miss.push(q);
+$("#fb").innerHTML=`<div class="msg"><b>${WRONG[Math.random()*WRONG.length|0]}</b><br>Đáp án đúng: <b>${esc(q[2][q[3]])}</b><br>${esc(q[4])}</div><button class="btn" id="nx">Tiếp tục 🌿</button>`;
+$("#nx").onclick=next}
+sync()}
+
+function openBox(){if(P.opened===P.i)return;P.opened=P.i;let r=Math.random()*100,rw=REW[0];for(const x of REW){if(r<x.w){rw=x;break}r-=x.w}
+P.score+=rw.v;P.garden.push(rw.p);floatTxt("+"+rw.v+" ☀️");
+$("#fb").querySelector(".boxes").outerHTML=`<div class="c"><div class="reveal">${rw.p}</div><b style="font-size:22px">+${rw.v} ☀️</b>${rw.v>=60?" — hiếm lắm đó! ✨":""}
+<p class="m">${NICE[Math.random()*NICE.length|0]}</p></div><button class="btn" id="nx">Câu tiếp theo →</button>`;
+$("#nx").onclick=next;const sc=$("#sc");if(sc)sc.textContent="☀️ "+P.score;sync()}
+
+function next(){if(!P||P.ended)return;P.locked=0;P.i++;
+if(P.ans>0&&P.ans%5==0&&(P.live||P.i<P.n))return breathe(false);question()}
+
+// ---------- Trạm hít thở ----------
+let BT=null;
+function breathe(manual){if(!P||P.ended)return;clearTimeout(BT);const back=()=>{clearTimeout(BT);if(P&&!P.ended)question()};
+app.innerHTML=topBar()+`<div class="card c"><h2>🫧 Trạm hít thở</h2><p class="m">Ngồi thẳng, thả lỏng vai. Nhìn vòng tròn và thở theo nhé.</p>
+<div class="breath" id="br">Sẵn sàng…</div><p id="bc" class="m">Nhịp 4 – 4 – 4 · 3 lượt</p>
+<button class="btn s" id="sk">${manual?"Quay lại chơi":"Bỏ qua"}</button></div>`;
+tick();$("#sk").onclick=back;
+const steps=[["Hít vào…",1.15],["Giữ hơi…",1.15],["Thở ra…",.6]];let s=0,cyc=0;
+const run=()=>{const el=$("#br");if(!el||!P)return;if(cyc>=3){el.textContent="Tuyệt vời 💚";el.style.transform="scale(.9)";
+if(!manual||!P.breathBonus){P.breaths++;P.score+=15;P.garden.push("🍀");floatTxt("+15 ☀️");if(manual)P.breathBonus=1;sync()}
+$("#bc").textContent="Bạn nhận được +15 ☀️ và một cây cỏ bốn lá 🍀";$("#sk").textContent="Chơi tiếp →";return}
+const [t,sc]=steps[s];el.textContent=t;el.style.transform=`scale(${sc})`;if(s==0)tone(262,3.5,.04);if(s==2)tone(196,3.5,.04);
+$("#bc").textContent=`Lượt ${cyc+1}/3`;s++;if(s==3){s=0;cyc++}BT=setTimeout(run,4000)};BT=setTimeout(run,600)}
+
+// ---------- Kết thúc ----------
+function finish(){if(!P||P.finished)return;P.finished=1;P.ended=1;clearTimeout(BT);clearInterval(TI);sync(true);ambient(false);leaves(14);chime();
+app.innerHTML=`<div class="card c"><div style="font-size:48px">🌈</div><h2>${P.live?"Hết giờ! ":""}Khu vườn của ${esc(G.nick)}</h2>
+<div class="garden" style="justify-content:center;font-size:30px">${P.garden.map(p=>`<span>${p}</span>`).join("")||"🌱"}</div>
+<div class="stat"><div><b>☀️ ${P.score}</b>điểm nắng</div><div><b>${P.ok}/${P.ans}</b>câu đúng</div><div><b>🔥 ${P.best}</b>chuỗi dài nhất</div></div>
+<div class="lbl">Bây giờ bạn cảm thấy thế nào?</div><div class="mood" id="md2">${MOOD.map(e=>`<button>${e}</button>`).join("")}</div><p id="mres" class="m"></p>
+<div id="lbw"></div>
+${P.miss.length?`<details style="text-align:left;margin-top:10px"><summary><b>📘 Ôn lại ${new Set(P.miss).size} câu chưa đúng</b></summary>${[...new Set(P.miss)].map(q=>`<div class="msg"><b>Bài ${q[0]}:</b> ${esc(q[1])}<br>→ <b>${esc(q[2][q[3]])}</b>. ${esc(q[4])}</div>`).join("")}</details>`:""}
+${P.live?`<p class="m small" style="margin-top:12px">Chờ thầy/cô mở ván mới, hoặc:</p><button class="btn s" id="hm">🚪 Rời phòng</button>`:`<button class="btn" id="again">🌱 Chơi lại</button><button class="btn s" id="hm">🏠 Trang chính</button>`}</div>`;
+$("#md2").querySelectorAll("button").forEach((b,i)=>b.onclick=()=>{G.m1=i;$("#md2").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x==b));
+const d=i-G.m0;$("#mres").innerHTML=d>0?`Từ ${MOOD[G.m0]} lên ${MOOD[i]} — tâm trạng của bạn đã nhẹ nhõm hơn rồi! 💚`:d==0?`Vẫn là ${MOOD[i]}. Cảm ơn bạn đã dành thời gian cho bản thân 🌿`:`Hôm nay có vẻ hơi mệt. Hãy nghỉ ngơi và trò chuyện với người bạn tin tưởng nhé 💛`;sync(true)});
+if(!P.live)$("#again").onclick=()=>start({n:P.n});
+$("#hm").onclick=()=>{history.replaceState(null,"",location.pathname);home()};
+if(P.live&&NET&&NET.state)renderBoard(NET.state)}
+
+// ---------- Hẹn giờ ----------
+let TI=null;
+function tick(){clearInterval(TI);if(!P||!P.live)return;const f=()=>{const el=$("#tm"),l=Math.max(0,P.endAt-Date.now());if(el)el.textContent="⏱ "+fmt(l)};f();TI=setInterval(f,500)}
+const fmt=ms=>{const s=Math.ceil(ms/1000);return String(s/60|0).padStart(2,"0")+":"+String(s%60).padStart(2,"0")};
+
+// ---------- Kết nối phòng ----------
+let ST=null,lastSent="";
+function sync(now){if(!NET||!P||!P.live)return;clearTimeout(ST);
+const send=()=>{const b={code:NET.code,pid:NET.pid,secret:NET.secret,round:NET.round,score:P.score,ok:P.ok,ans:P.ans,done:!!P.finished,m1:G.m1},k=JSON.stringify(b);
+if(k===lastSent)return;lastSent=k;post("/api/update",b).catch(()=>{lastSent=""})};
+now?send():ST=setTimeout(send,300)}
+async function joinRoom(code){
+const j=await post("/api/join",{code,nick:G.nick,av:G.av,m0:G.m0});
+NET={code,pid:j.pid,secret:j.secret,round:j.state.round,state:j.state};
+try{sessionStorage.setItem("vby-net",JSON.stringify({code,pid:j.pid,secret:j.secret}))}catch(e){}
+history.replaceState(null,"","?code="+code);
+P=newSession({live:true,waiting:1,ended:1});G.m1=null;openStream();onState(j.state,true)}
+function openStream(){if(!NET)return;if(NET.es)NET.es.close();
+const es=new EventSource(`/api/stream?code=${NET.code}&pid=${encodeURIComponent(NET.pid)}&secret=${encodeURIComponent(NET.secret)}`);NET.es=es;
+es.addEventListener("state",e=>{try{onState(JSON.parse(e.data))}catch(x){}});
+es.addEventListener("kicked",()=>gone("Bạn đã được mời ra khỏi phòng."));
+es.addEventListener("closed",()=>gone("Phòng đã đóng. Cảm ơn bạn đã chơi! 🌿"));
+es.onerror=()=>{const net=NET;setTimeout(()=>{if(NET===net&&es.readyState===2)fetch(`/api/stream?code=${net.code}&pid=${net.pid}&secret=${net.secret}`,{method:"HEAD"}).then(r=>{if(r.status==404)gone("Phòng không còn nữa (máy chủ có thể đã khởi động lại).");else openStream()}).catch(()=>setTimeout(openStream,3000))},2500)}}
+function gone(msg){leaveRoom(true);P=null;ambient(false);history.replaceState(null,"",location.pathname);
+app.innerHTML=`<div class="card c"><div style="font-size:48px">🍃</div><p>${esc(msg)}</p><button class="btn" onclick="home()">🏠 Trang chính</button></div>`}
+function leaveRoom(silent){clearInterval(TI);if(!NET)return;const n=NET;NET=null;if(n.es)n.es.close();
+try{sessionStorage.removeItem("vby-net")}catch(e){}
+if(!silent)post("/api/leave",{code:n.code,pid:n.pid,secret:n.secret}).catch(()=>{})}
+
+function onState(s,first){if(!NET||!P)return;NET.state=s;
+const pool=s.lessons&&s.lessons.length?Q.filter(q=>s.lessons.includes(q[0])):Q;
+if(s.round!==NET.round){NET.round=s.round;lastSent="";P=newSession({live:true,waiting:1,ended:1});G.m1=null}
+if(s.phase==="lobby"){if(!P.waiting||first||!$("#wl")){P=newSession({live:true,waiting:1,ended:1});waitScreen()}lobbyList(s)}
+else if(s.phase==="play"){
+ if(P.waiting){P=newSession({live:true,pool,qs:shuf(pool),endAt:Date.now()+s.left});
+  if(NET.restored){const me=(s.board||[]).find(p=>p.id===s.me);if(me)Object.assign(P,{score:me.score,ok:me.ok,ans:me.ans});NET.restored=0}ambient(sndOn);leaves(8);sync(true);question()}
+ else if(!P.finished)P.endAt=Date.now()+s.left;
+ if(!P.finished&&s.left<=0)finish()}
+else if(s.phase==="end"){
+ if(P.waiting){P=newSession({live:true,ended:1,finished:0});P.waiting=0;finish()}
+ else if(!P.finished)finish();
+ else renderBoard(s)}}
+
+function waitScreen(){app.innerHTML=`<div class="card c"><h2>Đã vào phòng ${esc(NET.code)} 🎉</h2><p class="m">Đang chờ thầy/cô bắt đầu… Trong lúc chờ, thở cùng vòng tròn nhé.</p>
+<div class="breath" id="wb">${G.av}</div><div id="wl"></div><button class="btn s" id="lv">Rời phòng</button></div>`;
+$("#lv").onclick=()=>{history.replaceState(null,"",location.pathname);home()};
+let big=0;const b=()=>{const el=$("#wb");if(!el)return;big=!big;el.style.transform=`scale(${big?1.1:.65})`;setTimeout(b,4000)};setTimeout(b,300)}
+function lobbyList(s){const el=$("#wl");if(!el)return;const ps=s.board||[];
+el.innerHTML=`<p><b>${ps.length}</b> người trong phòng</p><div style="font-size:28px;line-height:1.4">${ps.map(p=>`<span title="${esc(p.nick)}">${AV.includes(p.av)?p.av:"🌱"}</span>`).join(" ")}</div>`}
+function renderBoard(s){const el=$("#lbw");if(!el)return;const ps=s.board||[];if(!ps.length){el.innerHTML="";return}
+el.innerHTML=`<div class="lbl" style="text-align:left">🏆 Bảng vườn của lớp</div><ul class="lb">${ps.slice(0,20).map((p,i)=>`<li class="${p.id===s.me?"me":""}"><span class="r">${i<3?["🥇","🥈","🥉"][i]:i+1}</span>
+<span class="a">${AV.includes(p.av)?p.av:"🌱"}</span><span class="n">${esc(p.nick)}${p.id===s.me?" (bạn)":""}</span>
+<span class="m small">${p.ok}/${p.ans}</span><span class="s">☀️ ${p.score}</span></li>`).join("")}</ul>`}
+
+// ---------- Khởi động (khôi phục nếu lỡ tải lại trang) ----------
+(function(){let n=null;try{n=JSON.parse(sessionStorage.getItem("vby-net")||"null")}catch(e){}
+if(n&&n.code){NET={...n,round:-1,restored:1};P=newSession({live:true,waiting:1,ended:1});app.innerHTML=`<div class="card c"><p class="m">Đang vào lại phòng ${esc(n.code)}…</p></div>`;openStream()}
+else home()})();
+</script>
+</body>
+</html>

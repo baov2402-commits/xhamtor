@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quản lí – Vườn Bình Yên</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖥️</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&subset=vietnamese&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>.w{max-width:1100px}.log{height:150px;overflow:auto;font-size:12px;color:var(--m);background:#010805;border:1px solid var(--l);border-radius:6px;padding:8px;white-space:pre-wrap}
+.log b{color:var(--g)}.qlist{max-height:340px;overflow:auto;font-size:13px}.qlist div{border-bottom:1px dashed var(--l);padding:6px 0}.qlist i{color:var(--g);font-style:normal}</style>
+</head>
+<body>
+<div class="w" id="app"></div>
+<script src="/fx.js"></script>
+<script src="/questions.js"></script>
+<script>
+const Q=window.Q,LESSON=window.LESSON,AV=["🐢","🦦","🐨","🐼","🦥","🐳","🦔","🐝","🐸","🦊","🐰","🐧"],MOOD=["😣","😟","😐","🙂","😄"];
+const $=s=>document.querySelector(s),app=$("#app");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const post=(u,b)=>fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Lỗi kết nối");return j});
+const fmt=ms=>{const s=Math.ceil(ms/1000);return String(s/60|0).padStart(2,"0")+":"+String(s%60).padStart(2,"0")};
+let R=null,S=null,ES=null,endAt=0,known=new Map(),logs=[];
+
+function login(msg=""){
+app.innerHTML=`<div class="card" style="max-width:480px;margin:8vh auto">
+<div class="cmt">admin@vuon-binh-yen:~$</div><h1 style="font-size:30px">QUẢN_LÍ</h1>
+<div class="term" id="term"></div>
+<div class="lbl">Mật khẩu quản lí</div><input type="password" id="pw" placeholder="••••••••" autocomplete="current-password">
+<p class="err" id="er">${esc(msg)}</p><button class="btn" id="go">Tạo phòng mới →</button>
+<p class="m small c">Học sinh vào trang chính: <b id="org"></b></p></div>`;
+$("#org").textContent=location.origin;
+typeLines($("#term"),["> xác thực quyền truy cập...","> nhập mật khẩu để mở phòng chơi"]);
+const go=async()=>{$("#go").disabled=true;try{const j=await post("/api/admin/create",{pw:$("#pw").value});R={code:j.code,token:j.token};
+try{sessionStorage.setItem("vby-admin",JSON.stringify(R))}catch(e){}connect()}catch(e){$("#er").textContent=e.message;$("#go").disabled=false}};
+$("#go").onclick=go;$("#pw").onkeydown=e=>{if(e.key=="Enter")go()};$("#pw").focus()}
+
+function connect(){if(ES)ES.close();known=new Map();logs=[];S=null;
+ES=new EventSource(`/api/admin/stream?code=${R.code}&token=${encodeURIComponent(R.token)}`);
+ES.addEventListener("state",e=>{try{onState(JSON.parse(e.data))}catch(x){console.error(x)}});
+ES.onerror=()=>{setTimeout(()=>{if(ES&&ES.readyState===2)fetch(`/api/admin/stream?code=${R.code}&token=${R.token}`,{method:"HEAD"}).then(r=>{if(r.status==404){closeLocal();login("Phòng cũ không còn (máy chủ có thể đã khởi động lại). Hãy tạo phòng mới.")}else connect()}).catch(()=>setTimeout(connect,3000))},2500)}}
+function closeLocal(){if(ES)ES.close();ES=null;R=null;S=null;try{sessionStorage.removeItem("vby-admin")}catch(e){}}
+const act=(action,extra={})=>post("/api/admin/action",{code:R.code,token:R.token,action,...extra}).catch(e=>log("lỗi: "+e.message));
+
+function log(t){const d=new Date();logs.push(`[${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}] ${t}`);if(logs.length>80)logs.shift();
+const el=$("#log");if(el){el.textContent=logs.join("\n");el.scrollTop=1e9}}
+
+function onState(s){const prev=S;S=s;endAt=Date.now()+s.left;
+const ids=new Set(s.board.map(p=>p.id));
+for(const p of s.board)if(!known.has(p.id)){known.set(p.id,p.nick);if(prev)log(`+ ${p.av} ${p.nick} đã vào phòng`)}
+for(const [id,n] of known)if(!ids.has(id)){known.delete(id);log(`- ${n} đã rời phòng`)}
+if(!prev||prev.phase!==s.phase||prev.round!==s.round){if(prev)log(`# trạng thái → ${s.phase.toUpperCase()} (ván ${s.round})`);view()}else{board();stats()}}
+
+function view(){const s=S;const link=location.origin+"/?code="+s.code;
+const ctl=s.phase=="lobby"?`
+<div class="lbl">Thời gian mỗi ván</div><div class="row" id="dur">${[3,5,8,10,15].map(m=>`<button class="btn s ${s.dur==m*60000?"on":""}" data-m="${m}">${m}′</button>`).join("")}</div>
+<div class="lbl">Bài dùng trong ván <span class="m small">(không chọn = tất cả)</span></div>
+<div class="chk" id="les">${Object.keys(LESSON).map(k=>`<label class="${s.lessons.includes(+k)?"on":""}"><input type="checkbox" value="${k}" ${s.lessons.includes(+k)?"checked":""}>B${k}</label>`).join("")}</div>
+<button class="btn o" id="st">▶ BẮT ĐẦU VÁN ${s.round}</button>`
+:s.phase=="play"?`<div class="cmt c" style="margin-top:12px">thời gian còn lại</div><div class="code" id="tm" style="font-size:60px;letter-spacing:4px;color:var(--cy);text-shadow:0 0 20px #3df0ff">--:--</div>
+<button class="btn r" id="en">⏹ Kết thúc sớm</button>`
+:`<h2 class="c" style="margin-top:14px">VÁN ${s.round} ĐÃ KẾT THÚC 🌈</h2><button class="btn" id="st">▶ Chơi ván mới</button><button class="btn s" id="rs">↺ Về phòng chờ</button>`;
+app.innerHTML=`<div class="grid2">
+<div><div class="card c"><div class="cmt">mã phòng</div><div class="code">${s.code}</div>
+<p class="small m">Học sinh mở <b id="lk"></b> và nhập mã, hoặc dùng link:</p>
+<div class="row"><input type="text" id="lnk" readonly><button class="btn s" id="cp" style="flex:0 0 110px;margin:0">Sao chép</button></div>
+${ctl}</div>
+<div class="card"><h2>Thống kê</h2><div class="stat" id="stt"></div><div id="mood"></div></div>
+<div class="card"><h2>Nhật ký</h2><div class="log" id="log"></div></div></div>
+<div><div class="card"><h2>Bảng xếp hạng</h2><div id="bd"></div></div>
+<div class="card"><details><summary><b>📚 Ngân hàng câu hỏi (${Q.length} câu)</b></summary><div class="qlist">${Q.map(q=>`<div><i>B${q[0]}</i> ${esc(q[1])}<br>→ ${esc(q[2][q[3]])}</div>`).join("")}</div></details>
+<button class="btn r" id="cl">Đóng phòng</button></div></div></div>`;
+$("#lk").textContent=location.host;$("#lnk").value=link;
+$("#cp").onclick=()=>{navigator.clipboard?.writeText(link).then(()=>{$("#cp").textContent="Đã chép ✓"},()=>{$("#lnk").select()})};
+$("#cl").onclick=()=>{if($("#cl").dataset.c){act("close").then(()=>{closeLocal();login("Đã đóng phòng.")})}else{$("#cl").dataset.c=1;$("#cl").textContent="Bấm lần nữa để xác nhận đóng phòng"}};
+if(s.phase=="lobby"){$("#dur").querySelectorAll("button").forEach(b=>b.onclick=()=>act("settings",{dur:+b.dataset.m*60000}));
+$("#les").querySelectorAll("input").forEach(i=>i.onchange=()=>act("settings",{lessons:[...$("#les").querySelectorAll("input:checked")].map(x=>+x.value)}))}
+if($("#st"))$("#st").onclick=()=>act("start");
+if($("#en"))$("#en").onclick=()=>act("end");
+if($("#rs"))$("#rs").onclick=()=>act("reset");
+$("#log").textContent=logs.join("\n");board();stats()}
+
+function board(){const el=$("#bd");if(!el)return;const ps=S.board;
+if(!ps.length){el.innerHTML=`<p class="m">Chưa có ai vào phòng. Chia sẻ mã <b>${S.code}</b> cho học sinh nhé.</p>`;return}
+el.innerHTML=`<ul class="lb">${ps.map((p,i)=>`<li class="${p.online?"":"off"}"><span class="r">${i<3&&S.phase!="lobby"?["🥇","🥈","🥉"][i]:i+1}</span><span class="a">${AV.includes(p.av)?p.av:"🌱"}</span>
+<span class="n">${esc(p.nick)}${p.online?"":" <span class='small'>(mất kết nối)</span>"}</span><span class="m small">${p.ok}/${p.ans}</span><span class="s">☀️ ${p.score}</span>
+<span title="Tâm trạng trước → sau">${p.m0!=null?MOOD[p.m0]:""}${p.m1!=null?"→"+MOOD[p.m1]:""}</span><button class="x" data-id="${esc(p.id)}" title="Mời ra khỏi phòng">✕</button></li>`).join("")}</ul>`;
+el.querySelectorAll(".x").forEach(b=>b.onclick=()=>act("kick",{pid:b.dataset.id}))}
+
+function stats(){const el=$("#stt");if(!el)return;const ps=S.board,on=ps.filter(p=>p.online).length,ans=ps.reduce((a,p)=>a+p.ans,0),ok=ps.reduce((a,p)=>a+p.ok,0);
+el.innerHTML=`<div><b>${ps.length}</b>người chơi<br><span class="small">${on} đang online</span></div><div><b>${ans?Math.round(ok/ans*100):0}%</b>trả lời đúng</div><div><b>${ans}</b>lượt trả lời</div>`;
+const w=ps.filter(p=>p.m0!=null&&p.m1!=null),up=w.filter(p=>p.m1>p.m0).length,same=w.filter(p=>p.m1==p.m0).length;
+const avg0=ps.filter(p=>p.m0!=null),a0=avg0.length?avg0.reduce((a,p)=>a+p.m0,0)/avg0.length:null;
+$("#mood").innerHTML=`<div class="lbl">Tâm trạng của lớp</div>`+(a0!=null?`<p>Trước khi chơi (trung bình): <b>${MOOD[Math.round(a0)]}</b></p>`:"")+
+(w.length?`<div class="msg ok">💚 ${up}/${w.length} bạn thấy nhẹ nhõm hơn · ${same} bạn giữ nguyên · ${w.length-up-same} bạn còn mệt</div>`
+:`<p class="m small">Kết quả "sau khi chơi" sẽ hiện khi học sinh chọn biểu cảm ở màn hình kết thúc.</p>`)+
+(w.length-up-same>0?`<p class="small m">Gợi ý: hỏi thăm riêng những bạn đánh dấu 😣/😟 ở cột tâm trạng.</p>`:"")}
+
+setInterval(()=>{if(S&&S.phase=="play"){const t=$("#tm");if(t)t.textContent=fmt(Math.max(0,endAt-Date.now()))}},500);
+(function(){let r=null;try{r=JSON.parse(sessionStorage.getItem("vby-admin")||"null")}catch(e){}if(r&&r.code){R=r;app.innerHTML=`<div class="card c"><p class="m">> đang kết nối lại phòng ${esc(r.code)}…</p></div>`;connect()}else login()})();
+</script>
+</body>
+</html>
